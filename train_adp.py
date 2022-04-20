@@ -11,7 +11,7 @@ from config.dataset_config import getData
 
 from datetime import datetime
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 parser = argparse.ArgumentParser(description='PyTorch CNN Training')
 parser.add_argument(
@@ -49,7 +49,7 @@ start_epoch = 0  # start from epoch 0 or last checkpoint epoch
 if opt.dataset == 'FashionMNIST':
     total_epoch = 40
 if opt.dataset == 'CIFAR100':
-    total_epoch = 150
+    total_epoch = 200
 if opt.dataset == 'Tiny_Image':
     total_epoch = 100
 
@@ -116,7 +116,7 @@ if opt.resume:
         # optimizer.step()
         scheduler.step()
 else:
-    print('==> Preparing %s %s %s' %(opt.model, opt.dataset, opt.method))
+    print('==> Preparing %s %s' %(opt.model, opt.dataset))
     print('==> Building model..')
 
 # covert net to GPU
@@ -258,8 +258,8 @@ def train(epoch):
     correct = 0
     total = 0
 
-    scheduler.step()
-    print('learning_rate: %s' % str(scheduler.get_lr()))
+    
+    print('learning_rate: %s' % str(scheduler.get_last_lr()))
     for batch_idx, (inputs, targets) in enumerate(trainloader):
 
         if use_cuda:
@@ -275,6 +275,7 @@ def train(epoch):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        scheduler.step()
         train_loss += loss.data
         train_CE_loss += CE_loss.data
         train_SE_loss += SE_loss.data

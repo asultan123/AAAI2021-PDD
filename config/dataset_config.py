@@ -23,7 +23,7 @@ def getData(dataset):
         return num_classes, train_data, test_data
 
     if dataset == 'CIFAR100':
-        DATAROOT = '/data/datasets/pytorch_datasets/CIFAR100/'
+        DATAROOT = './data/datasets/pytorch_datasets/CIFAR100/'
         transform_train = transforms.Compose([
             transforms.RandomCrop(32, padding=4),
             transforms.RandomHorizontalFlip(),
@@ -36,9 +36,9 @@ def getData(dataset):
         ])
 
         train_data = torchvision.datasets.CIFAR100(
-            root=DATAROOT, train=True, download=False, transform=transform_train)
+            root=DATAROOT, train=True, download=True, transform=transform_train)
         test_data = torchvision.datasets.CIFAR100(
-            root=DATAROOT, train=False, download=False, transform=transform_test)
+            root=DATAROOT, train=False, download=True, transform=transform_test)
         num_classes = 100
 
         return num_classes, train_data, test_data
