@@ -5,7 +5,6 @@ import argparse
 import os
 from pathlib import Path
 
-import progress
 from torch.autograd import Variable
 from networks.ensemble_resnet import ensemble_3_resnet18, ensemble_5_resnet18, ensemble_3_resnet34, ensemble_5_resnet34
 from config.dataset_config import getData
@@ -46,6 +45,9 @@ parser.add_argument(
 parser.add_argument('--no-progressbar', action='store_true')
 parser.set_defaults(no_progressbar=False)
 opt = parser.parse_args()
+
+if not opt.no_progressbar:
+    import progress
 
 torch.manual_seed(opt.seed)
 random.seed(opt.seed)
