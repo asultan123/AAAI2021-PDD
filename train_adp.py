@@ -65,7 +65,7 @@ if opt.dataset == 'Tiny_Image':
     total_epoch = 100
 
 path = os.path.join(opt.model_basepath, opt.dataset,
-                    opt.save_dir+'_'+opt.model)
+                    opt.save_dir+'_'+opt.model, f'seed_{opt.seed}')
 Path(path).mkdir(parents=True, exist_ok=True)
 
 results_log_csv_name = opt.save_dir + '_results.csv'
