@@ -24,6 +24,8 @@ parser.add_argument(
     default='ensemble_3_resnet18',
     help='CNN architecture')
 parser.add_argument('--dataset', type=str, default='CIFAR100', help='datasets')
+parser.add_argument('--use-progressbar', type=bool,
+                    default=True, help='Use Progressbar to track training/testing progress')
 parser.add_argument('--seed', type=int, default=1234, help='seed')
 parser.add_argument('--bs', default=64, type=int, help='batch size')
 parser.add_argument('--lr', default=0.02, type=float, help='learning rate')
@@ -41,6 +43,8 @@ parser.add_argument(
     type=str,
     default='adp',
     help='save log and model')
+parser.add_argument('--no-progressbar', action='store_true')
+parser.set_defaults(no_progressbar=False)
 opt = parser.parse_args()
 
 torch.manual_seed(opt.seed)
@@ -319,17 +323,28 @@ def train(epoch):
             correct += p.eq(targets.data).cpu().sum() / num_models
         total += targets.size(0)
 
-        progress.progress_bar(
-            batch_idx,
-            len(trainloader),
-            'Total_Loss: %.3f CE_Loss: %.3f SE_Loss: %.3f LogED_Loss: %.3f| Acc: %.3f%% (%d/%d)'
-            '' % (train_loss / (batch_idx + 1),
-                  train_CE_loss / (batch_idx + 1),
-                  train_SE_loss / (batch_idx + 1),
-                  train_LogED_loss / (batch_idx + 1),
-                  100. * float(correct) / total,
-                  correct,
-                  total))
+        if not opt.no_progressbar:
+            progress.progress_bar(
+                batch_idx,
+                len(trainloader),
+                'Total_Loss: %.3f CE_Loss: %.3f SE_Loss: %.3f LogED_Loss: %.3f| Acc: %.3f%% (%d/%d)'
+                '' % (train_loss / (batch_idx + 1),
+                      train_CE_loss / (batch_idx + 1),
+                      train_SE_loss / (batch_idx + 1),
+                      train_LogED_loss / (batch_idx + 1),
+                      100. * float(correct) / total,
+                      correct,
+                      total))
+        else:
+            if batch_idx % 50 == 0 or batch_idx == len(trainloader)-1:
+                print('Epoch %d/%d Total_Loss: %.3f CE_Loss: %.3f SE_Loss: %.3f LogED_Loss: %.3f| Acc: %.3f%% (%d/%d)'
+                      '' % (batch_idx, len(trainloader), train_loss / (batch_idx + 1),
+                            train_CE_loss / (batch_idx + 1),
+                            train_SE_loss / (batch_idx + 1),
+                            train_LogED_loss / (batch_idx + 1),
+                            100. * float(correct) / total,
+                            correct,
+                            total))
 
     Train_acc = 100. * float(correct) / total
 
@@ -373,18 +388,30 @@ def test(epoch):
             correct += p.eq(targets.data).cpu().sum() / num_models
         total += targets.size(0)
 
-        progress.progress_bar(
-            batch_idx,
-            len(testloader),
-            'Total_Loss: %.3f CE_Loss: %.3f SE_Loss: %.3f LogED_Loss: %.3f | Acc: %.3f%% (%d/%d)'
-            '' % (Test_loss / (batch_idx + 1),
-                  Test_CE_loss/(batch_idx + 1),
-                  Test_SE_loss / (batch_idx + 1),
-                  Test_LogED_loss / (batch_idx + 1),
-                  100. * float(correct)/total,
-                  correct,
-                  total))
-
+        if not opt.no_progressbar:
+            progress.progress_bar(
+                batch_idx,
+                len(testloader),
+                'Total_Loss: %.3f CE_Loss: %.3f SE_Loss: %.3f LogED_Loss: %.3f | Acc: %.3f%% (%d/%d)'
+                '' % (Test_loss / (batch_idx + 1),
+                      Test_CE_loss/(batch_idx + 1),
+                      Test_SE_loss / (batch_idx + 1),
+                      Test_LogED_loss / (batch_idx + 1),
+                      100. * float(correct)/total,
+                      correct,
+                      total))
+        else:
+            if batch_idx % 10 == 0 or batch_idx == len(testloader)-1:
+                print(
+                    'Epoch %d/%d Total_Loss: %.3f CE_Loss: %.3f SE_Loss: %.3f LogED_Loss: %.3f | Acc: %.3f%% (%d/%d)'
+                    '' % (batch_idx, len(testloader), Test_loss / (batch_idx + 1),
+                          Test_CE_loss/(batch_idx + 1),
+                          Test_SE_loss / (batch_idx + 1),
+                          Test_LogED_loss / (batch_idx + 1),
+                          100. * float(correct)/total,
+                          correct,
+                          total)
+                )
     # Save checkpoint.
     Test_acc = 100. * float(correct) / total
     if Test_acc > best_Test_acc:
