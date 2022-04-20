@@ -66,7 +66,7 @@ trainloader = torch.utils.data.DataLoader(
     train_data,
     batch_size=opt.bs,
     shuffle=True,
-    num_workers=4,
+    num_workers=8,
     pin_memory=True)
 testloader = torch.utils.data.DataLoader(
     test_data,
