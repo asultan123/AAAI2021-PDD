@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 import argparse
 import os
+from pathlib import Path
 
 import progress
 from torch.autograd import Variable
@@ -10,8 +11,11 @@ from networks.ensemble_resnet import ensemble_3_resnet18, ensemble_5_resnet18, e
 from config.dataset_config import getData
 
 from datetime import datetime
+from timeit import default_timer as timer
 
-# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+import numpy as np
+import random
+
 
 parser = argparse.ArgumentParser(description='PyTorch CNN Training')
 parser.add_argument(
@@ -20,10 +24,13 @@ parser.add_argument(
     default='ensemble_3_resnet18',
     help='CNN architecture')
 parser.add_argument('--dataset', type=str, default='CIFAR100', help='datasets')
+parser.add_argument('--seed', type=int, default=1234, help='seed')
 parser.add_argument('--bs', default=64, type=int, help='batch size')
 parser.add_argument('--lr', default=0.02, type=float, help='learning rate')
 parser.add_argument('--alpha', default=2.0, type=float, help='alpha')
 parser.add_argument('--lamda', default=0.5, type=float, help='lamda')
+parser.add_argument('--model-basepath', type=str,
+                    default='./models', help='basepath of model directory')
 parser.add_argument(
     '--resume',
     '-r',
@@ -35,6 +42,10 @@ parser.add_argument(
     default='adp',
     help='save log and model')
 opt = parser.parse_args()
+
+torch.manual_seed(opt.seed)
+random.seed(opt.seed)
+np.random.seed(opt.seed)
 
 # assert opt.model == opt.save_dir
 
@@ -53,9 +64,10 @@ if opt.dataset == 'CIFAR100':
 if opt.dataset == 'Tiny_Image':
     total_epoch = 100
 
-path = os.path.join('./models', opt.dataset, opt.save_dir+'_'+opt.model)
-if not os.path.isdir(path):
-    os.mkdir(path)
+path = os.path.join(opt.model_basepath, opt.dataset,
+                    opt.save_dir+'_'+opt.model)
+Path(path).mkdir(parents=True, exist_ok=True)
+
 results_log_csv_name = opt.save_dir + '_results.csv'
 
 print('==> Preparing data..')
@@ -116,12 +128,13 @@ if opt.resume:
         # optimizer.step()
         scheduler.step()
 else:
-    print('==> Preparing %s %s' %(opt.model, opt.dataset))
+    print('==> Preparing %s %s' % (opt.model, opt.dataset))
     print('==> Building model..')
 
 # covert net to GPU
 if use_cuda:
     net = net.cuda()
+
 
 class LogNLLLoss(nn.Module):
 
@@ -146,18 +159,23 @@ class LogDet(nn.Module):
 
     def forward(self, probs, targets):
         targets_one_hot = self.one_hot(targets, self.num_classes)
-        conca_targets_one_hot = torch.cat([targets_one_hot for n in range(self.num_models)], dim=-1)
+        conca_targets_one_hot = torch.cat(
+            [targets_one_hot for n in range(self.num_models)], dim=-1)
 
         bool_R_mask = torch.BoolTensor(conca_targets_one_hot < 1)
         if torch.cuda.is_available():
             bool_R_mask = bool_R_mask.cuda()
         bool_R_targets = torch.masked_select(probs, bool_R_mask)
 
-        mask_non_y_pred = bool_R_targets.view([-1, self.num_models, self.num_classes - 1])
-        mask_non_y_pred = mask_non_y_pred / torch.norm(mask_non_y_pred, p=2, dim=2, keepdim=True)
+        mask_non_y_pred = bool_R_targets.view(
+            [-1, self.num_models, self.num_classes - 1])
+        mask_non_y_pred = mask_non_y_pred / \
+            torch.norm(mask_non_y_pred, p=2, dim=2, keepdim=True)
 
-        matrix = torch.matmul(mask_non_y_pred, mask_non_y_pred.permute(0, 2, 1))
-        matrix_off = self.det_offset * torch.unsqueeze(torch.eye(self.num_models).cuda(), 0) + matrix
+        matrix = torch.matmul(
+            mask_non_y_pred, mask_non_y_pred.permute(0, 2, 1))
+        matrix_off = self.det_offset * \
+            torch.unsqueeze(torch.eye(self.num_models).cuda(), 0) + matrix
 
         all_log_det = torch.logdet(matrix_off)
         return torch.mean(all_log_det)
@@ -206,6 +224,7 @@ class EnsembleCrossEntropy(nn.Module):
             ce_loss_v += ce_loss_i
         return ce_loss_v, ce_loss_list
 
+
 def main():
 
     # record train log
@@ -215,12 +234,22 @@ def main():
     # start train
     for epoch in range(start_epoch, total_epoch):
         print('current time:', datetime.now().strftime('%b%d-%H:%M:%S'))
+        start = timer()
         train(epoch)
+        end = timer()
+        training_time = end-start
+        start = timer()
         test(epoch)
+        end = timer()
+        test_time = end-start
+
+        print(f'Epoch {epoch} training time: {training_time:.2f}')
+        print(f'Epoch {epoch} test3 time: {test_time:.2f}')
+
         # Log results
         with open(os.path.join(path, results_log_csv_name), 'a') as f:
             f.write('%5d, %.5f, %.5f, %.5f, %.5f, %.5f, %.5f, %.5f, %.5f, %.6f, %.5f, %s,\n'
-                    '' %( epoch,
+                    '' % (epoch,
                           train_loss,
                           Test_loss,
                           train_CE_loss,
@@ -238,11 +267,13 @@ def main():
 
     # best ACC
     with open(os.path.join(path, results_log_csv_name), 'a') as f:
-        f.write('%s,%03d,%0.3f,\n' %('best acc (test)',
+        f.write('%s,%03d,%0.3f,\n' % ('best acc (test)',
                                       best_Test_acc_epoch,
                                       best_Test_acc))
 
 # Training
+
+
 def train(epoch):
     print('\nEpoch: %d' % epoch)
     global Train_acc
@@ -258,16 +289,17 @@ def train(epoch):
     correct = 0
     total = 0
 
-    
     print('learning_rate: %s' % str(scheduler.get_last_lr()))
     for batch_idx, (inputs, targets) in enumerate(trainloader):
 
         if use_cuda:
             inputs, targets = inputs.cuda(), targets.cuda()
-        inputs, targets = Variable(inputs, requires_grad=True), Variable(targets)
+        inputs, targets = Variable(
+            inputs, requires_grad=True), Variable(targets)
         outputs = net(inputs)
 
-        CE_loss, CE_loss_list = EnsembleCrossEntropy(num_models, num_classes)(outputs, targets)
+        CE_loss, CE_loss_list = EnsembleCrossEntropy(
+            num_models, num_classes)(outputs, targets)
         SE_loss = ShannonEntropy(num_models, num_classes)(outputs)
         LogED_loss = LogDet(num_models, num_classes)(outputs, targets)
         loss = CE_loss - opt.alpha*SE_loss - opt.lamda*LogED_loss
@@ -291,13 +323,13 @@ def train(epoch):
             batch_idx,
             len(trainloader),
             'Total_Loss: %.3f CE_Loss: %.3f SE_Loss: %.3f LogED_Loss: %.3f| Acc: %.3f%% (%d/%d)'
-            ''%(train_loss /(batch_idx +1),
-                train_CE_loss /(batch_idx +1),
-                train_SE_loss / (batch_idx + 1),
-                train_LogED_loss / (batch_idx + 1),
-                100. *float(correct) /total,
-                correct,
-                total))
+            '' % (train_loss / (batch_idx + 1),
+                  train_CE_loss / (batch_idx + 1),
+                  train_SE_loss / (batch_idx + 1),
+                  train_LogED_loss / (batch_idx + 1),
+                  100. * float(correct) / total,
+                  correct,
+                  total))
 
     Train_acc = 100. * float(correct) / total
 
@@ -320,10 +352,12 @@ def test(epoch):
     for batch_idx, (inputs, targets) in enumerate(testloader):
         if use_cuda:
             inputs, targets = inputs.cuda(), targets.cuda()
-        inputs, targets = Variable(inputs, requires_grad=True), Variable(targets)
+        inputs, targets = Variable(
+            inputs, requires_grad=True), Variable(targets)
         outputs = net(inputs)
 
-        CE_loss, CE_loss_list = EnsembleCrossEntropy(num_models, num_classes)(outputs, targets)
+        CE_loss, CE_loss_list = EnsembleCrossEntropy(
+            num_models, num_classes)(outputs, targets)
         SE_loss = ShannonEntropy(num_models, num_classes)(outputs)
         LogED_loss = LogDet(num_models, num_classes)(outputs, targets)
         loss = CE_loss - opt.alpha * SE_loss - opt.lamda * LogED_loss
@@ -343,13 +377,13 @@ def test(epoch):
             batch_idx,
             len(testloader),
             'Total_Loss: %.3f CE_Loss: %.3f SE_Loss: %.3f LogED_Loss: %.3f | Acc: %.3f%% (%d/%d)'
-            '' %(Test_loss /(batch_idx + 1),
-                 Test_CE_loss/(batch_idx + 1),
-                 Test_SE_loss / (batch_idx + 1),
-                 Test_LogED_loss / (batch_idx + 1),
-                 100. *float(correct)/total,
-                 correct,
-                 total))
+            '' % (Test_loss / (batch_idx + 1),
+                  Test_CE_loss/(batch_idx + 1),
+                  Test_SE_loss / (batch_idx + 1),
+                  Test_LogED_loss / (batch_idx + 1),
+                  100. * float(correct)/total,
+                  correct,
+                  total))
 
     # Save checkpoint.
     Test_acc = 100. * float(correct) / total
